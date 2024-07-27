@@ -1,13 +1,9 @@
 ﻿using System;
-using UnityEngine;
-using UnityEngine.UI;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Data;
-using System.Text;
-using static Network.WebRequest;
+using UnityEngine;
 using Cysharp.Threading.Tasks;
+using static Network.WebRequest;
 
 namespace MD
 {
@@ -17,49 +13,50 @@ namespace MD
     public class MasterData
     {
         //設定系
-        string URI = "";
-        const string DataPrefix = "MasterData";
+        private string _uri = "";
+        private const string DataPrefix = "MasterData";
 
         //シングルトン運用
-        static MasterData _instance = new MasterData();
-        static public MasterData Instance => _instance;
-
+        private static readonly MasterData _instance = new MasterData();
+        public static MasterData Instance => _instance;
 
         //ゲーム中のマスターデータ
         /// <summary>
         /// 整形済みデータ
         /// </summary>
-        class PrettyData<K, T>
+        class PrettyData<TK, T>
         {
-            Dictionary<K, T> Data = new Dictionary<K, T>();
-            static public PrettyData<K, T> Create(T[] data, Func<T, K> mapper)
+            private readonly Dictionary<TK, T> _data = new Dictionary<TK, T>();
+
+            public static PrettyData<TK, T> Create(T[] data, Func<T, TK> mapper)
             {
-                PrettyData<K, T> ret = new PrettyData<K, T>();
+                PrettyData<TK, T> ret = new PrettyData<TK, T>();
                 foreach (var d in data)
                 {
-                    K key = mapper.Invoke(d);
+                    TK key = mapper.Invoke(d);
                     if (key == null) continue;
 
-                    if(ret.Data.ContainsKey(key))
+                    if (ret._data.ContainsKey(key))
                     {
-                        Debug.Log($"duplicate key:{key}");
+                        Debug.Log($"duplicate key: {key}");
                         continue;
                     }
 
-                    ret.Data.Add(key, d);
+                    ret._data.Add(key, d);
                 }
+
                 return ret;
             }
 
-            public T GetData(K key)
+            public T GetData(TK key)
             {
-                if (Data.ContainsKey(key)) return Data[key];
-                else return default(T);
+                return _data.TryGetValue(key, out var value) ? value : default(T);
             }
+
 #if UNITY_EDITOR
-            public K[] GetKeys()
+            public TK[] GetKeys()
             {
-                return Data.Keys.ToArray();
+                return _data.Keys.ToArray();
             }
 #endif
         }
@@ -68,40 +65,39 @@ namespace MD
         //NOTE: そもそもコードで参照するのであればべた書きもあり
 
         //公開マスターデータ
-        static public List<Chapter> Chapters => _instance._chapters;
-        static public List<Quest> Quests => _instance._quests;
-        static public List<GameEvent> Events => _instance._events;
+        public static List<Chapter> Chapters => _instance._chapters;
+        public static List<Quest> Quests => _instance._quests;
+        public static List<GameEvent> Events => _instance._events;
 
         //リスト型
-        List<Chapter> _chapters = new List<Chapter>();
-        List<Quest> _quests = new List<Quest>();
-        List<GameEvent> _events = new List<GameEvent>();
+        private readonly List<Chapter> _chapters = new List<Chapter>();
+        private readonly List<Quest> _quests = new List<Quest>();
+        private readonly List<GameEvent> _events = new List<GameEvent>();
 
         //辞書配列
-        PrettyData<int, Card> _cardMaster = new PrettyData<int, Card>();
-        PrettyData<int, Chapter> _chapterMaster = new PrettyData<int, Chapter>();
-        PrettyData<int, Quest> _questMaster = new PrettyData<int, Quest>();
-        PrettyData<int, Item> _itemMaster = new PrettyData<int, Item>();
-        PrettyData<int, GameEvent> _eventMaster = new PrettyData<int, GameEvent>();
-        PrettyData<string, TextData> _textMaster = new PrettyData<string, TextData>();
+        private PrettyData<int, Card> _cardMaster = new PrettyData<int, Card>();
+        private PrettyData<int, Chapter> _chapterMaster = new PrettyData<int, Chapter>();
+        private PrettyData<int, Quest> _questMaster = new PrettyData<int, Quest>();
+        private PrettyData<int, Item> _itemMaster = new PrettyData<int, Item>();
+        private PrettyData<int, GameEvent> _eventMaster = new PrettyData<int, GameEvent>();
+        private PrettyData<string, TextData> _textMaster = new PrettyData<string, TextData>();
 
         //読み込み管理
-        static public bool IsLoadingComplete => _instance._isInit;
+        public static bool IsLoadingComplete => _instance._isInit;
 
-        delegate void LoadMasterDataCallback<T>(T data);
-        bool _isInit = false;
-        bool _useCache = false;
-        Action _onLoadCallback = null;
-        Dictionary<string, int> _versionInfos = new Dictionary<string, int>();
+        private bool _isInit = false;
+        private bool _useCache = false;
+        private Action _onLoadCallback = null;
+        private Dictionary<string, int> _versionInfos = new Dictionary<string, int>();
 
         string GetFileName(string sheetName)
         {
-            return string.Format("{0}/{1}.json", DataPrefix, sheetName);
+            return $"{DataPrefix}/{sheetName}.json";
         }
 
         public async UniTask<int> Setup(bool useCache = true, Action callback = null)
         {
-            URI = GameSetting.MasterDataAPIURI;
+            _uri = GameSetting.MasterDataAPIURI;
 
             _useCache = useCache;
 
@@ -120,7 +116,7 @@ namespace MD
                 LoadMasterData<ItemMaster>("Item"),
                 LoadMasterData<EffectMaster>("Effect"),
             };
-            await UniTask.WhenAll(masterDataDownloads.ToArray());
+            await UniTask.WhenAll(masterDataDownloads);
             await ConstructMasterData();
 
             Debug.Log("MasterData Load Done.");
@@ -138,10 +134,9 @@ namespace MD
             //マスタ結合 or 整形
 
             //テキストマスタを設定する
-            //日本語を使う
-            //TODO: 言語設定を見る
-            var jp_text = await LocalData.LoadAsync<TextMaster>(GetFileName("JP_Text"));
-            _textMaster = PrettyData<string, TextData>.Create(jp_text.Data, (TextData line) => { return line.Key == "" ? null : line.Key; });
+            var jpText = await LocalData.LoadAsync<TextMaster>(GetFileName("JP_Text"));
+            _textMaster = PrettyData<string, TextData>.Create(jpText.Data,
+                line => string.IsNullOrEmpty(line.Key) ? null : line.Key);
 
             //カードマスタをマージする
             var card = await LocalData.LoadAsync<CardMaster>(GetFileName("Card"));
@@ -150,80 +145,94 @@ namespace MD
             var quest = await LocalData.LoadAsync<QuestMaster>(GetFileName("Quest"));
             var effect = await LocalData.LoadAsync<EffectMaster>(GetFileName("Effect"));
             var evt = await LocalData.LoadAsync<EventMaster>(GetFileName("Event"));
-            var efectList = PrettyData<int, EffectData>.Create(effect.Data, (EffectData line) => { return line.Id; });
+            var efectList = PrettyData<int, EffectData>.Create(effect.Data, line => line.Id);
 
             List<Card> cards = new List<Card>();
             foreach (var c in card.Data)
             {
                 //カードデータを組み合わせていく
-                Card d = new Card();
-                d.Id = c.Id;
-                d.Name = c.Name;
-                d.Rare = c.Rare;
-                d.Resource = c.Resource;
-                d.Effect = efectList.GetData(c.EffectId);
+                Card d = new Card
+                {
+                    Id = c.Id,
+                    Name = c.Name,
+                    Rare = c.Rare,
+                    Resource = c.Resource,
+                    Effect = efectList.GetData(c.EffectId)
+                };
                 cards.Add(d);
             }
-            _cardMaster = PrettyData<int, Card>.Create(cards.ToArray(), (Card line) => { return line.Id; });
+
+            _cardMaster = PrettyData<int, Card>.Create(cards.ToArray(), line => line.Id);
 
             //アイテムマスタをマージする
             List<Item> items = new List<Item>();
             foreach (var i in item.Data)
             {
-                //カードデータを組み合わせていく
-                Item d = new Item();
-                d.Id = i.Id;
-                d.Name = i.Name;
-                d.Type = (ItemType)i.Type;
-                d.Resource = i.Resource;
-                d.Effect = efectList.GetData(i.EffectId);
+                //アイテムデータを組み合わせていく
+                Item d = new Item
+                {
+                    Id = i.Id,
+                    Name = i.Name,
+                    Type = (ItemType)i.Type,
+                    Resource = i.Resource,
+                    Effect = efectList.GetData(i.EffectId)
+                };
                 items.Add(d);
             }
-            _itemMaster = PrettyData<int, Item>.Create(items.ToArray(), (Item line) => { return line.Id; });
+
+            _itemMaster = PrettyData<int, Item>.Create(items.ToArray(), line => line.Id);
 
             //イベントマスタを整形する
             _events.Clear();
             foreach (var ev in evt.Data)
             {
-                //カードデータを組み合わせていく
-                GameEvent d = new GameEvent();
-                d.Id = ev.Id;
-                d.Name = ev.Name;
-                d.Resource = ev.Resource;
-                d.StartAt = DateTime.Parse(ev.StartAt);
-                d.GameEndAt = DateTime.Parse(ev.GameEndAt);
-                d.EndAt = DateTime.Parse(ev.EndAt);
+                //イベントデータを組み合わせていく
+                GameEvent d = new GameEvent
+                {
+                    Id = ev.Id,
+                    Name = ev.Name,
+                    Resource = ev.Resource,
+                    StartAt = DateTime.Parse(ev.StartAt),
+                    GameEndAt = DateTime.Parse(ev.GameEndAt),
+                    EndAt = DateTime.Parse(ev.EndAt)
+                };
                 _events.Add(d);
             }
-            _eventMaster = PrettyData<int, GameEvent>.Create(_events.ToArray(), (GameEvent line) => { return line.Id; });
+
+            _eventMaster = PrettyData<int, GameEvent>.Create(_events.ToArray(), line => line.Id);
 
             //クエストマスタをマージしていく
             _quests.Clear();
             foreach (var q in quest.Data)
             {
-                Quest d = new Quest();
-                d.Id = q.Id;
-                d.Name = q.Name;
-                d.Resource = q.Resource;
-                d.ChapterId = q.ChapterId;
-                d.MovePoint = q.MovePoint;
+                Quest d = new Quest
+                {
+                    Id = q.Id,
+                    Name = q.Name,
+                    Resource = q.Resource,
+                    ChapterId = q.ChapterId,
+                    MovePoint = q.MovePoint
+                };
                 _quests.Add(d);
             }
 
             _chapters.Clear();
             foreach (var c in chapter.Data)
             {
-                Chapter d = new Chapter();
-                d.Id = c.Id;
-                d.Name = c.Name;
-                d.Resource = c.Resource;
-                d.QuestType = c.QuestType;
-                d.Condition = c.Condition;
-                d.QuestList = _quests.Where(q => q.ChapterId == c.Id).ToList();
+                Chapter d = new Chapter
+                {
+                    Id = c.Id,
+                    Name = c.Name,
+                    Resource = c.Resource,
+                    QuestType = c.QuestType,
+                    Condition = c.Condition,
+                    QuestList = _quests.Where(q => q.ChapterId == c.Id).ToList()
+                };
                 _chapters.Add(d);
             }
-            _questMaster = PrettyData<int, Quest>.Create(_quests.ToArray(), (Quest line) => { return line.Id; });
-            _chapterMaster = PrettyData<int, Chapter>.Create(_chapters.ToArray(), (Chapter line) => { return line.Id; });
+
+            _questMaster = PrettyData<int, Quest>.Create(_quests.ToArray(), line => line.Id);
+            _chapterMaster = PrettyData<int, Chapter>.Create(_chapters.ToArray(), line => line.Id);
         }
 
         /// <summary>
@@ -236,28 +245,25 @@ namespace MD
             var filename = GetFileName(sheetName);
             var data = await LocalData.LoadAsync<T>(filename);
             bool isUpdate = data == null || !_useCache;
-            if(!isUpdate && _versionInfos.ContainsKey(sheetName))
+            if (!isUpdate && _versionInfos.ContainsKey(sheetName))
             {
-                Debug.Log($"Server:{_versionInfos[sheetName]} > Local:{data.Version}");
+                Debug.Log($"Server: {_versionInfos[sheetName]} > Local: {data.Version}");
                 isUpdate = _versionInfos[sheetName] > data.Version;
             }
 
             if (isUpdate)
             {
-                string json = await GetRequest(string.Format("{0}?sheet={1}", URI, sheetName));
+                string json = await GetRequest($"{_uri}?sheet={sheetName}");
                 Debug.Log(json);
                 T dt = JsonUtility.FromJson<T>(json);
-                await LocalData.SaveAsync<T>(filename, dt);
-                Debug.Log("Network download. : " + filename + " / " + json + "/" + filename);
+                await LocalData.SaveAsync(filename, dt);
+                Debug.Log($"Network download. : {filename} / {json}");
             }
             else
             {
-                Debug.Log("Localfile used. : " + filename);
+                Debug.Log($"Local file used. : {filename}");
             }
         }
-
-
-
 
         //データ取得用ラッパー
         //TODO:
@@ -267,7 +273,7 @@ namespace MD
         /// </summary>
         /// <param name="key">テキストのキー</param>
         /// <returns>テキスト</returns>
-        static public string GetLocalizedText(string key)
+        public static string GetLocalizedText(string key)
         {
             return _instance._textMaster.GetData(key)?.Text;
         }
@@ -275,56 +281,55 @@ namespace MD
         /// <summary>
         /// カード取得
         /// </summary>
-        /// <param name="Id">カードのId</param>
+        /// <param name="id">カードのId</param>
         /// <returns>カード情報</returns>
-        static public Card GetCard(int Id)
+        public static Card GetCard(int id)
         {
-            return _instance._cardMaster.GetData(Id);
+            return _instance._cardMaster.GetData(id);
         }
 
         /// <summary>
         /// アイテム取得
         /// </summary>
-        /// <param name="Id">アイテムのId</param>
+        /// <param name="id">アイテムのId</param>
         /// <returns>アイテム情報</returns>
-        static public Item GetItem(int Id)
+        public static Item GetItem(int id)
         {
-            return _instance._itemMaster.GetData(Id);
+            return _instance._itemMaster.GetData(id);
         }
 
         /// <summary>
         /// チャプターデータ取得
         /// </summary>
-        /// <param name="Id">チャプターId</param>
+        /// <paramね="id">チャプターId</param>
         /// <returns>チャプター情報</returns>
-        static public Chapter GetChapter(int Id)
+        public static Chapter GetChapter(int id)
         {
-            return _instance._chapterMaster.GetData(Id);
+            return _instance._chapterMaster.GetData(id);
         }
 
         /// <summary>
         /// クエストデータ取得
         /// </summary>
-        /// <param name="Id">クエストId</param>
+        /// <param name="id">クエストId</param>
         /// <returns>クエスト情報</returns>
-        static public Quest GetQuest(int Id)
+        public static Quest GetQuest(int id)
         {
-            return _instance._questMaster.GetData(Id);
+            return _instance._questMaster.GetData(id);
         }
 
         /// <summary>
         /// イベントデータ取得
         /// </summary>
-        /// <param name="Id">イベントId</param>
+        /// <param name="id">イベントId</param>
         /// <returns>イベント情報</returns>
-        static public GameEvent GetEvent(int Id)
+        public static GameEvent GetEvent(int id)
         {
-            return _instance._eventMaster.GetData(Id);
+            return _instance._eventMaster.GetData(id);
         }
 
-
 #if UNITY_EDITOR
-        static public string[] GetTextKeys()
+        public static string[] GetTextKeys()
         {
             return _instance._textMaster.GetKeys();
         }

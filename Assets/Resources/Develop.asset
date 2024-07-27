@@ -12,4 +12,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2dbcd5dbed963f048bcfb6e10ddc322b, type: 3}
   m_Name: Develop
   m_EditorClassIdentifier: 
-  MasterDataAPIURI: https://script.google.com/macros/s/AKfycbwpRS0kMKykaxxyS2f2f4nQoGqzHMboFlzH5y7fp4b5W2i9qonkeFRr9-lpqQ333SYz/exec
+  MasterDataAPIURI: https://script.google.com/macros/s/AKfycbyjzFE8lUWGnUOb4-Ukr9ekIWr1XSxapgZBo89s1TJE73gGCVEXi1qTokvm2TX0Juaq/exec
